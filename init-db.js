@@ -26,16 +26,6 @@ const init = async () => {
             );
         `);
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS interactions (
-                id SERIAL PRIMARY KEY, 
-                user_id INTEGER REFERENCES users(id), 
-                photo_id INTEGER REFERENCES photos(id), 
-                type VARCHAR(10), 
-                UNIQUE(user_id, photo_id)
-            );
-        `);
-
         console.log("Siker! A táblák készen állnak.");
         process.exit(0);
     } catch (err) {
