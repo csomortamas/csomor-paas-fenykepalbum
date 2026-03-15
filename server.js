@@ -23,7 +23,18 @@ if (isProduction && !process.env.SESSION_SECRET) {
 }
 
 if (process.env.REDIS_URL) {
-  redisClient = createClient({ url: process.env.REDIS_URL });
+  const redisUrl = process.env.REDIS_URL;
+  const useTls = redisUrl.startsWith('rediss://');
+
+  redisClient = createClient({
+    url: redisUrl,
+    socket: useTls
+      ? {
+          tls: true,
+          rejectUnauthorized: false
+        }
+      : undefined
+  });
   redisClient.on('error', (err) => {
     console.error('Redis hiba:', err);
   });
