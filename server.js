@@ -3,20 +3,62 @@ const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
+const compression = require('compression');
 const multer = require('multer');
 const path = require('path');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
+let redisClient = null;
+let sessionStore;
+const sessionSecret = process.env.SESSION_SECRET || 'super_secret_session_key';
+
+if (isProduction && !process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET kornyezeti valtozo kotelezo production kornyezetben.');
+}
+
+if (process.env.REDIS_URL) {
+  redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient.on('error', (err) => {
+    console.error('Redis hiba:', err);
+  });
+  redisClient.connect().catch((err) => {
+    console.error('Nem sikerult csatlakozni a Redishez:', err);
+  });
+  sessionStore = new RedisStore({
+    client: redisClient,
+    prefix: 'fenykepalbum:sess:'
+  });
+}
+
+if (isProduction && !sessionStore) {
+  console.warn('REDIS_URL nincs beallitva, a session tarolas nem lesz tobb dyno-kompatibilis.');
+}
+
+app.set('trust proxy', 1);
+
 app.use(express.json({ limit: '10mb' }));
+app.use(compression());
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'super_secret_session_key',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  store: sessionStore,
+  cookie: {
+    secure: isProduction,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000
+  }
 }));
+
+app.get('/healthz', (_req, res) => {
+  res.status(200).json({ ok: true });
+});
 
 app.get('/api/photos', async (req, res) => {
   try {
@@ -128,6 +170,29 @@ app.get(/^(?!\/api).+/, (req, res) => {
   res.sendFile(path.join(__dirname, 'client/dist/index.html'));
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Szerver fut a', process.env.PORT || 3000, 'porton');
+const port = process.env.PORT || 3000;
+const server = app.listen(port, () => {
+  console.log('Szerver fut a', port, 'porton');
+});
+
+const shutdown = async () => {
+  console.log('Leallas folyamatban...');
+  server.close(async () => {
+    await pool.end();
+    if (redisClient) {
+      await redisClient.quit();
+    }
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+process.on('unhandledRejection', (err) => {
+  console.error('Nem kezelt Promise hiba:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Nem kezelt kivetel:', err);
 });
