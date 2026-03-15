@@ -16,41 +16,13 @@ Heroku (https://csomor-paas-fenykepalbum-3872bd2f225d.herokuapp.com/)
 
 ### Skálázható Heroku beállítás
 
-Az alkalmazás több web dyno-val futtatható, mert a session adatok Redis-ben vannak tárolva (nem memóriában).
+Az alkalmazás skálázhatóságához ezek a lépések készültek el:
 
-### Képtárolás Cloudinary-ben (Heroku-barát)
-
-A képek nem PostgreSQL-ben, hanem Cloudinary-ben vannak tárolva. Az adatbázis csak a kép URL-jét és a Cloudinary azonosítót menti.
-
-#### Miért ez a legegyszerűbb Heroku integráció?
-
-- Van hivatalos Heroku addon.
-- Automatikusan ad `CLOUDINARY_URL` config var-t.
-- Nem kell saját object storage bucketet és IAM jogosultságot kezelni.
-
-#### Szükséges lépések
-
-1. Cloudinary addon bekötése:
-
-```bash
-heroku addons:create cloudinary:starter --app csomor-paas-fenykepalbum
-```
-
-2. Ellenőrzés, hogy megvan a környezeti változó:
-
-```bash
-heroku config --app csomor-paas-fenykepalbum | grep CLOUDINARY_URL
-```
-
-3. Deploy a módosított kóddal (`master` auto deploy vagy manuális push).
-
-4. A release folyamat automatikusan frissíti a táblát új oszlopokkal (`image_url`, `image_public_id`).
-
-#### Megjegyzés régi adatokhoz
-
-- A régi, base64-es rekordok továbbra is megjelennek (fallback).
-- Az új feltöltések már Cloudinary-be mennek.
-- Ha szeretnéd, később lehet külön migrációt írni a régi képek teljes átköltöztetésére.
+1. Session store Redis-ben (dyno-k között megosztva)
+2. Képtárolás Cloudinary-ben (Postgres blob helyett)
+3. Lekérdezési terhelés csökkentése:
+- Fotólista lapozása: 10 kép/lap
+- Auth és upload endpointok rate limitinggel védettek.
 
 ### Code
 
