@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatDate } from '../utils';
 
-export default function PhotoList({ photos, loading, user, onOpenPhoto, onShowUpload }) {
+export default function PhotoList({ photos, loading, loadingMore, hasMore, user, onOpenPhoto, onShowUpload, onLoadMore }) {
   if (loading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-20 text-center text-xs text-stone-400">
@@ -44,6 +44,18 @@ export default function PhotoList({ photos, loading, user, onOpenPhoto, onShowUp
           </div>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="pt-5 text-center">
+          <button
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            className="px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 transition cursor-pointer bg-transparent border-none underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'betöltés...' : 'további képek'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

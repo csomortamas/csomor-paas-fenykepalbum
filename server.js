@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
+const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const multer = require('multer');
 const path = require('path');
@@ -67,6 +68,22 @@ app.use(session({
   }
 }));
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Tul sok belepesi probalkozas. Probald ujra kesobb.' }
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Tul sok feltoltesi keres. Probald ujra kesobb.' }
+});
+
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ ok: true });
 });
@@ -74,14 +91,38 @@ app.get('/healthz', (_req, res) => {
 app.get('/api/photos', async (req, res) => {
   try {
     const { sort } = req.query;
+    const requestedPage = Number.parseInt(req.query.page, 10);
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 50)
+      : 20;
+    const offset = (page - 1) * limit;
     const order = sort === 'date' ? 'upload_date DESC' : 'name ASC';
-    const result = await pool.query(`
+
+    const [result, countResult] = await Promise.all([
+      pool.query(`
       SELECT p.id, p.name, p.upload_date, p.user_id, u.username as uploader
       FROM photos p
       LEFT JOIN users u ON p.user_id = u.id
       ORDER BY ${order}
-    `);
-    res.json(result.rows);
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]),
+      pool.query('SELECT COUNT(*)::int AS total FROM photos')
+    ]);
+
+    const total = countResult.rows[0]?.total || 0;
+    const hasMore = offset + result.rows.length < total;
+
+    res.json({
+      items: result.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Hiba a fotók lekérésekor.' });
@@ -99,7 +140,7 @@ app.get('/api/photos/:id', async (req, res) => {
   }
 });
 
-app.post('/api/upload', upload.single('image'), async (req, res) => {
+app.post('/api/upload', uploadLimiter, upload.single('image'), async (req, res) => {
   try {
     if (!req.session.userId) return res.status(401).json({ error: 'Belépés szükséges!' });
     if (!req.file) return res.status(400).json({ error: 'Nincs kép csatolva!' });
@@ -130,7 +171,7 @@ app.delete('/api/photos/:id', async (req, res) => {
   }
 });
 
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Felhasználónév és jelszó szükséges!' });
@@ -147,7 +188,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Felhasználónév és jelszó szükséges!' });
