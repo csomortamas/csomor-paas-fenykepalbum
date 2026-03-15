@@ -21,10 +21,16 @@ const init = async () => {
                 id SERIAL PRIMARY KEY, 
                 name VARCHAR(40), 
                 upload_date TIMESTAMP DEFAULT NOW(), 
-                image_data TEXT, 
+                image_url TEXT,
+                image_public_id TEXT,
                 user_id INTEGER REFERENCES users(id)
             );
         `);
+
+        await pool.query('ALTER TABLE photos ADD COLUMN IF NOT EXISTS image_url TEXT;');
+        await pool.query('ALTER TABLE photos ADD COLUMN IF NOT EXISTS image_public_id TEXT;');
+        await pool.query('DELETE FROM photos WHERE image_url IS NULL;');
+        await pool.query('ALTER TABLE photos DROP COLUMN IF EXISTS image_data;');
 
         console.log("Siker! A táblák készen állnak.");
         process.exit(0);

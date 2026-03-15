@@ -7,6 +7,7 @@ const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
 const rateLimit = require('express-rate-limit');
 const compression = require('compression');
+const { v2: cloudinary } = require('cloudinary');
 const multer = require('multer');
 const path = require('path');
 
@@ -18,9 +19,20 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 let redisClient = null;
 let sessionStore;
 const sessionSecret = process.env.SESSION_SECRET || 'super_secret_session_key';
+const hasCloudinary = Boolean(process.env.CLOUDINARY_URL);
 
 if (isProduction && !process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET kornyezeti valtozo kotelezo production kornyezetben.');
+}
+
+if (isProduction && !hasCloudinary) {
+  throw new Error('CLOUDINARY_URL kornyezeti valtozo kotelezo production kornyezetben.');
+}
+
+if (hasCloudinary) {
+  cloudinary.config({
+    secure: true
+  });
 }
 
 if (process.env.REDIS_URL) {
@@ -88,6 +100,21 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
+const uploadToCloudinary = (fileBuffer) => new Promise((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    {
+      folder: 'fenykepalbum',
+      resource_type: 'image'
+    },
+    (error, result) => {
+      if (error) return reject(error);
+      return resolve(result);
+    }
+  );
+
+  stream.end(fileBuffer);
+});
+
 app.get('/api/photos', async (req, res) => {
   try {
     const { sort } = req.query;
@@ -146,12 +173,13 @@ app.post('/api/upload', uploadLimiter, upload.single('image'), async (req, res) 
     if (!req.session.userId) return res.status(401).json({ error: 'Belépés szükséges!' });
     if (!req.file) return res.status(400).json({ error: 'Nincs kép csatolva!' });
     if (!req.body.name || req.body.name.trim().length === 0) return res.status(400).json({ error: 'A név megadása kötelező!' });
+    if (!hasCloudinary) return res.status(503).json({ error: 'A kep tarolo szolgaltatas nincs beallitva.' });
 
-    const imgData = req.file.buffer.toString('base64');
+    const uploadResult = await uploadToCloudinary(req.file.buffer);
     const name = req.body.name.trim().substring(0, 40);
     await pool.query(
-      'INSERT INTO photos (name, image_data, user_id, upload_date) VALUES ($1, $2, $3, NOW())',
-      [name, imgData, req.session.userId]
+      'INSERT INTO photos (name, image_url, image_public_id, user_id, upload_date) VALUES ($1, $2, $3, $4, NOW())',
+      [name, uploadResult.secure_url, uploadResult.public_id, req.session.userId]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -163,8 +191,18 @@ app.post('/api/upload', uploadLimiter, upload.single('image'), async (req, res) 
 app.delete('/api/photos/:id', async (req, res) => {
   try {
     if (!req.session.userId) return res.status(401).json({ error: 'Belépés szükséges!' });
-    const result = await pool.query('DELETE FROM photos WHERE id = $1 RETURNING id', [req.params.id]);
+    const result = await pool.query('DELETE FROM photos WHERE id = $1 RETURNING id, image_public_id', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Fotó nem található.' });
+
+    const publicId = result.rows[0].image_public_id;
+    if (publicId && hasCloudinary) {
+      try {
+        await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
+      } catch (cloudinaryErr) {
+        console.error('Cloudinary torlesi hiba:', cloudinaryErr);
+      }
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

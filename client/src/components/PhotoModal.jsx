@@ -4,6 +4,7 @@ import { formatDate } from '../utils';
 
 export default function PhotoModal({ photo, onClose, user, onDeleted }) {
   const [deleting, setDeleting] = useState(false);
+  const photoSrc = photo.image_url;
 
   const handleDelete = async () => {
     if (!window.confirm('biztosan törlöd?')) return;
@@ -24,7 +25,7 @@ export default function PhotoModal({ photo, onClose, user, onDeleted }) {
       <div className="bg-stone-50 border border-stone-200 rounded-lg w-full max-w-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="bg-stone-100 flex items-center justify-center" style={{ maxHeight: '60vh' }}>
           <img
-            src={`data:image/jpeg;base64,${photo.image_data}`}
+            src={photoSrc}
             alt={photo.name}
             className="max-w-full max-h-[55vh] object-contain"
           />
