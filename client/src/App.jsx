@@ -32,7 +32,7 @@ export default function App() {
         params: {
           sort,
           page: targetPage,
-          limit: 20
+          limit: 10
         }
       });
       const items = res.data?.items || [];

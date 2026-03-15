@@ -91,12 +91,13 @@ app.get('/healthz', (_req, res) => {
 app.get('/api/photos', async (req, res) => {
   try {
     const { sort } = req.query;
+    const maxPageSize = 10;
     const requestedPage = Number.parseInt(req.query.page, 10);
     const requestedLimit = Number.parseInt(req.query.limit, 10);
     const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
-      ? Math.min(requestedLimit, 50)
-      : 20;
+      ? Math.min(requestedLimit, maxPageSize)
+      : maxPageSize;
     const offset = (page - 1) * limit;
     const order = sort === 'date' ? 'upload_date DESC' : 'name ASC';
 
