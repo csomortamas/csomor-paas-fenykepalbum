@@ -10,16 +10,12 @@ const compression = require('compression');
 const { v2: cloudinary } = require('cloudinary');
 const multer = require('multer');
 const path = require('path');
-const { Judoscale, middleware: judoscaleMiddleware } = require('judoscale-express');
+const judoscale = require('judoscale-express').default;
 
 const app = express();
 
 // Judoscale autoscaling integráció (első middleware-ként)
-if (process.env.RAILS_AUTOSCALE_URL) {
-  const judoscale = new Judoscale();
-  app.use(judoscaleMiddleware(judoscale));
-  console.log('Judoscale autoscaling integráció aktiválva');
-}
+app.use(judoscale());
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
