@@ -86,7 +86,7 @@ app.use(session({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Tul sok belepesi probalkozas. Probald ujra kesobb.' }
@@ -102,6 +102,15 @@ const uploadLimiter = rateLimit({
 
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ ok: true });
+});
+
+app.get('/api/stress', (req, res) => {
+  const iterations = parseInt(req.query.n) || 1000000;
+  let result = 0;
+  for (let i = 0; i < iterations; i++) {
+    result += Math.sqrt(i) * Math.sin(i);
+  }
+  res.json({ result, iterations });
 });
 
 const uploadToCloudinary = (fileBuffer) => new Promise((resolve, reject) => {
